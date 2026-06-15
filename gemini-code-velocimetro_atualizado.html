@@ -833,8 +833,62 @@
         calcularTudo();
     }
 
-    // Inicialização automática puxando a API assim que a página abre
-    window.onload = buscarCotacoesApi;
+    // NOVA FUNÇÃO ATUALIZADA: Busca Dólar e VALE nas APIs e atualiza o Dashboard
+    async function buscarCotacoesApi() {
+        try {
+            // 1. BUSCA O DÓLAR (AwesomeAPI)
+            const respostaDolar = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL');
+            const dadosDolar = await respostaDolar.json();
+            
+            if(dadosDolar && dadosDolar.USDBRL) {
+                let varDolar = parseFloat(dadosDolar.USDBRL.pctChange);
+                // Atualiza o DXY com a variação do dólar comercial
+                document.getElementById('val-dxy').value = varDolar.toFixed(1);
+            }
+        } catch (erroDolar) {
+            console.error("Erro ao sincronizar dados do Dólar:", erroDolar);
+        }
+
+        try {
+            // 2. BUSCA A VALE (Brapi API)
+            // Nota: Usamos o ticker 'VALE3' da B3. Se preferir a ADR em NY, use 'VALE'.
+            const respostaVale = await fetch('https://brapi.dev/api/quote/VALE3');
+            const dadosVale = await respostaVale.json();
+            
+            if(dadosVale && dadosVale.results && dadosVale.results[0]) {
+                // changePercent traz a variação percentual do dia (ex: 1.5 para +1.5%)
+                let varVale = parseFloat(dadosVale.results[0].changePercent);
+                
+                // Atualiza o input da VALE automaticamente no seu painel
+                // Certifique-se de que o id do input da Vale seja exatamente 'val-vale'
+                let inputVale = document.getElementById('val-vale');
+                if(inputVale) {
+                    inputVale.value = varVale.toFixed(1);
+                }
+            }
+        } catch (erroVale) {
+            console.error("Erro ao sincronizar dados da VALE:", erroVale);
+        }
+
+        // Após tentar puxar de todas as APIs, roda a esteira matemática para atualizar o velocímetro
+        calcularTudo();
+    }
+    // Configuração do tempo de atualização automática (em milissegundos)
+    // 60000 milissegundos = 1 minuto. 
+    // Se quiser a cada 30 segundos, mude para 30000.
+    const INTERVALO_ATUALIZACAO = 60000; 
+
+    // Inicialização automática do Dashboard
+    window.onload = function() {
+        // 1. Busca os dados da API imediatamente assim que a página abre
+        buscarCotacoesApi();
+        
+        // 2. Cria o cronômetro para repetir a busca e o cálculo de tempo em tempo
+        setInterval(async function() {
+            console.log("Atualizando dados do Dashboard automaticamente...");
+            await buscarCotacoesApi();
+        }, INTERVALO_ATUALIZACAO);
+    };
 </script>
 
 </body>
