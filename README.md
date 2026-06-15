@@ -848,6 +848,46 @@
             console.log("Atualizando dados do Dashboard automaticamente...");
             await buscarCotacoesApi();
         }, INTERVALO_ATUALIZACAO);
+        // NOVA FUNÇÃO ATUALIZADA: Busca Dólar e VALE nas APIs e atualiza o Dashboard
+    async function buscarCotacoesApi() {
+        try {
+            // 1. BUSCA O DÓLAR (AwesomeAPI)
+            const respostaDolar = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL');
+            const dadosDolar = await respostaDolar.json();
+            
+            if(dadosDolar && dadosDolar.USDBRL) {
+                let varDolar = parseFloat(dadosDolar.USDBRL.pctChange);
+                // Atualiza o DXY com a variação do dólar comercial
+                document.getElementById('val-dxy').value = varDolar.toFixed(1);
+            }
+        } catch (erroDolar) {
+            console.error("Erro ao sincronizar dados do Dólar:", erroDolar);
+        }
+
+        try {
+            // 2. BUSCA A VALE (Brapi API)
+            // Nota: Usamos o ticker 'VALE3' da B3. Se preferir a ADR em NY, use 'VALE'.
+            const respostaVale = await fetch('https://brapi.dev/api/quote/VALE3');
+            const dadosVale = await respostaVale.json();
+            
+            if(dadosVale && dadosVale.results && dadosVale.results[0]) {
+                // changePercent traz a variação percentual do dia (ex: 1.5 para +1.5%)
+                let varVale = parseFloat(dadosVale.results[0].changePercent);
+                
+                // Atualiza o input da VALE automaticamente no seu painel
+                // Certifique-se de que o id do input da Vale seja exatamente 'val-vale'
+                let inputVale = document.getElementById('val-vale');
+                if(inputVale) {
+                    inputVale.value = varVale.toFixed(1);
+                }
+            }
+        } catch (erroVale) {
+            console.error("Erro ao sincronizar dados da VALE:", erroVale);
+        }
+
+        // Após tentar puxar de todas as APIs, roda a esteira matemática para atualizar o velocímetro
+        calcularTudo();
+    }
     };
 </script>
 
