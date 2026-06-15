@@ -1,7 +1,13 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
+  git init
+git add .
+git commit -m "Primeiro commit"
+git branch -M main
+git remote add origin URL_DO_SEU_REPOSITORIO
+git push -u origin main  
+<meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard de Análise Pré-Market</title>
     <style>
