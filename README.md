@@ -833,8 +833,22 @@
         calcularTudo();
     }
 
-    // Inicialização automática puxando a API assim que a página abre
-    window.onload = buscarCotacoesApi;
+    // Configuração do tempo de atualização automática (em milissegundos)
+    // 60000 milissegundos = 1 minuto. 
+    // Se quiser a cada 30 segundos, mude para 30000.
+    const INTERVALO_ATUALIZACAO = 60000; 
+
+    // Inicialização automática do Dashboard
+    window.onload = function() {
+        // 1. Busca os dados da API imediatamente assim que a página abre
+        buscarCotacoesApi();
+        
+        // 2. Cria o cronômetro para repetir a busca e o cálculo de tempo em tempo
+        setInterval(async function() {
+            console.log("Atualizando dados do Dashboard automaticamente...");
+            await buscarCotacoesApi();
+        }, INTERVALO_ATUALIZACAO);
+    };
 </script>
 
 </body>
