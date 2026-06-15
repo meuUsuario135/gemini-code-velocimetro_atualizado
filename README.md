@@ -833,22 +833,7 @@
         calcularTudo();
     }
 
-    // Configuração do tempo de atualização automática (em milissegundos)
-    // 60000 milissegundos = 1 minuto. 
-    // Se quiser a cada 30 segundos, mude para 30000.
-    const INTERVALO_ATUALIZACAO = 60000; 
-
-    // Inicialização automática do Dashboard
-    window.onload = function() {
-        // 1. Busca os dados da API imediatamente assim que a página abre
-        buscarCotacoesApi();
-        
-        // 2. Cria o cronômetro para repetir a busca e o cálculo de tempo em tempo
-        setInterval(async function() {
-            console.log("Atualizando dados do Dashboard automaticamente...");
-            await buscarCotacoesApi();
-        }, INTERVALO_ATUALIZACAO);
-        // NOVA FUNÇÃO ATUALIZADA: Busca Dólar e VALE nas APIs e atualiza o Dashboard
+    // FUNÇÃO CORRIGIDA: Busca Dólar e VALE usando rota pública sem bloqueio
     async function buscarCotacoesApi() {
         try {
             // 1. BUSCA O DÓLAR (AwesomeAPI)
@@ -857,7 +842,6 @@
             
             if(dadosDolar && dadosDolar.USDBRL) {
                 let varDolar = parseFloat(dadosDolar.USDBRL.pctChange);
-                // Atualiza o DXY com a variação do dólar comercial
                 document.getElementById('val-dxy').value = varDolar.toFixed(1);
             }
         } catch (erroDolar) {
@@ -865,17 +849,17 @@
         }
 
         try {
-            // 2. BUSCA A VALE (Brapi API)
-            // Nota: Usamos o ticker 'VALE3' da B3. Se preferir a ADR em NY, use 'VALE'.
-            const respostaVale = await fetch('https://brapi.dev/api/quote/VALE3');
-            const dadosVale = await respostaVale.json();
+            // 2. BUSCA A VALE (Via Proxy HG Finance - Aberto e Gratuito)
+            const respostaVale = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent('https://api.hgbrasil.com/finance/stock_price?symbol=vale3'));
+            const dadosBrutos = await respostaVale.json();
             
-            if(dadosVale && dadosVale.results && dadosVale.results[0]) {
-                // changePercent traz a variação percentual do dia (ex: 1.5 para +1.5%)
-                let varVale = parseFloat(dadosVale.results[0].changePercent);
+            // O proxy encapsula a resposta em uma string dentro de .contents
+            const dadosVale = JSON.parse(dadosBrutos.contents);
+            
+            if(dadosVale && dadosVale.results && dadosVale.results.VALE3) {
+                // Captura a variação percentual (change_percent) que já vem calculada pela HG
+                let varVale = parseFloat(dadosVale.results.VALE3.change_percent);
                 
-                // Atualiza o input da VALE automaticamente no seu painel
-                // Certifique-se de que o id do input da Vale seja exatamente 'val-vale'
                 let inputVale = document.getElementById('val-vale');
                 if(inputVale) {
                     inputVale.value = varVale.toFixed(1);
@@ -883,6 +867,182 @@
             }
         } catch (erroVale) {
             console.error("Erro ao sincronizar dados da VALE:", erroVale);
+            // Se falhar, define como 0.0 para não quebrar o cálculo matemático do painel
+            let inputVale = document.getElementById('val-vale');
+            if(inputVale && inputVale.value === "") {
+                inputVale.value = "0.0";
+            }
+        }
+
+        // Roda a esteira de cálculo do velocímetro e coloração das fontes
+        calcularTudo();
+    }
+    
+    // NOVA FUNÇÃO: Busca dados na API e atualiza os inputs do Dashboard automaticamente
+    async function buscarCotacoesApi() {
+        try {
+            // Buscando as variações de mercado (Dólar Comercial serve de parâmetro inicial para o DXY local se desejado)
+            // Nota: Como a API gratuita fornece Moedas principais, usaremos a variação percentual delas para alimentar o painel de moedas.
+            const resposta = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL,EUR-BRL,BTC-BRL');
+            const dados = await resposta.json();
+            
+            if(dados && dados.USDBRL) {
+                // Captura a variação percentual diária (pctChange) do Dólar comercial da API
+                let varDolar = parseFloat(dados.USDBRL.pctChange);
+                
+                // Atualiza o input do DXY automaticamente com a variação capturada
+                document.getElementById('val-dxy').value = varDolar.toFixed(1);
+            }
+            
+            // Após puxar os dados atualizados da API, roda a esteira matemática do velocímetro
+            calcularTudo();
+            
+        } catch (erro) {
+            console.error("Erro ao sincronizar dados da AwesomeAPI:", erro);
+            // Se falhar, roda o cálculo com os valores padrões salvos no HTML
+            calcularTudo();
+        }
+    }
+
+    function alterar(id, delta) {
+        let input = document.getElementById(id);
+        let valorAtual = parseFloat(input.value) || 0;
+        input.value = (valorAtual + delta).toFixed(1);
+        colorirTicker(id, valorAtual + delta);
+        calcularTudo();
+    }
+
+    function colorirTicker(id, valor) {
+        let tickerId = id.replace('val-', 'name-');
+        let elemento = document.getElementById(tickerId);
+        if(!elemento) return;
+        
+        if (valor > 0) {
+            elemento.className = "asset-ticker c-green";
+        } else if (valor < 0) {
+            elemento.className = "asset-ticker c-pink";
+        } else {
+            elemento.className = "asset-ticker c-white";
+        }
+    }
+
+    function formatarDistribuicao(valores, ids) {
+        return ids.map((id) => {
+            let val = valores[id];
+            
+            // Se o ativo for VIX ou DXY, inverte o valor para a exibição matemática
+            if (id === 'vix' || id === 'dxy') {
+                let valInvertido = -val;
+                let sinal = valInvertido >= 0 ? '+' : '';
+                let cor = valInvertido >= 0 ? 'c-green' : 'c-pink';
+                return `<span class="math-badge ${cor}">(-)[${sinal}${valInvertido.toFixed(1)}%]</span>`;
+            }
+            
+            let sinal = val >= 0 ? '+' : '';
+            let cor = val >= 0 ? 'c-green' : 'c-pink';
+            return `<span class="math-badge ${cor}">[${sinal}${val.toFixed(1)}%]</span>`;
+        }).join(' + ');
+    }
+
+    function calcularTudo() {
+        let vals = {};
+        
+        // Coleta dinâmica de todos os inputs
+        let todosAtivos = [...ativosConfig.macro, ...ativosConfig.adrs];
+        todosAtivos.forEach(ativo => {
+            let val = parseFloat(document.getElementById(`val-${ativo}`).value) || 0;
+            vals[ativo] = val;
+            colorirTicker(`val-${ativo}`, val);
+        });
+
+        // VIX e DXY invertidos no cálculo da Soma Macro (Correlação Inversa clássica com o Mercado)
+        let somaMacro = (-vals.vix) + vals.fef + vals.cl1 + (-vals.dxy); 
+        let somaADRs = vals.vale + vals.pbr + vals.itub + vals.bbdc + vals.bbas + vals.b3sa;
+
+        let somaGlobal = somaMacro + somaADRs;
+        let absGlobal = Math.abs(somaGlobal);
+
+        // Atualiza a seção do detalhamento matemático estruturado
+        document.getElementById('math-macro-expr').innerHTML = formatarDistribuicao(vals, ativosConfig.macro);
+        document.getElementById('math-macro-res').innerText = ` = ${somaMacro >= 0 ? '+' : ''}${somaMacro.toFixed(1)}%`;
+        document.getElementById('math-macro-res').className = somaMacro >= 0 ? 'c-green' : 'c-pink';
+
+        document.getElementById('math-adrs-expr').innerHTML = formatarDistribuicao(vals, ativosConfig.adrs);
+        document.getElementById('math-adrs-res').innerText = ` = ${somaADRs >= 0 ? '+' : ''}${somaADRs.toFixed(1)}%`;
+        document.getElementById('math-adrs-res').className = somaADRs >= 0 ? 'c-green' : 'c-pink';
+
+        // Renderização do Display Central e cálculo do ponteiro
+        let display = document.getElementById('total-display');
+        display.innerText = `${somaGlobal >= 0 ? '+' : ''}${somaGlobal.toFixed(1)}%`;
+        
+        if(somaGlobal > 0) display.className = "total-percentage c-green";
+        else if(somaGlobal < 0) display.className = "total-percentage c-pink";
+        else display.className = "total-percentage c-white";
+
+        // Movimentação do ponteiro do Gauge (-90° a +90°)
+        let angulo = somaGlobal * 12; // Sensibilidade de rotação
+        if (angulo > 85) angulo = 85;
+        if (angulo < -85) angulo = -85;
+        document.getElementById('needle').style.transform = `rotate(${angulo}deg)`;
+
+        // Calibração e ativação das tabelas de mapeamento por intensidade
+        document.querySelectorAll('.intensity-table tr').forEach(r => r.className = '');
+        document.querySelectorAll('.bias-box').forEach(b => b.className = 'bias-box');
+        
+        let statusDisplay = document.getElementById('status-display');
+
+        if (absGlobal < 1.5) {
+            document.getElementById('row-lateral').className = 'row-active-style';
+            document.getElementById('strat-lat').className = 'bias-box active';
+            statusDisplay.innerText = "NEUTRO - RANGE LATERALIZADO";
+            statusDisplay.className = "display-status c-blue";
+        } else if (absGlobal >= 1.5 && absGlobal < 3.5) {
+            document.getElementById('row-fraca').className = 'row-active-style';
+            setDirecionalBias(somaGlobal, "EXPRESSÃO FRACA");
+        } else if (absGlobal >= 3.5 && absGlobal < 6.5) {
+            document.getElementById('row-moderada').className = 'row-active-style';
+            setDirecionalBias(somaGlobal, "MODERADO");
+        } else {
+            document.getElementById('row-forte').className = 'row-active-style';
+            setDirecionalBias(somaGlobal, "FORTE IMPULSO");
+        }
+    }
+
+    function setDirecionalBias(total, intensidadeNome) {
+        let statusDisplay = document.getElementById('status-display');
+        if (total > 0) {
+            document.getElementById('strat-pos').className = 'bias-box active';
+            statusDisplay.innerText = `ALTA - ${intensidadeNome}`;
+            statusDisplay.className = "display-status c-green";
+        } else {
+            document.getElementById('strat-neg').className = 'bias-box active';
+            statusDisplay.innerText = `BAIXA - ${intensidadeNome}`;
+            statusDisplay.className = "display-status c-pink";
+        }
+    }
+
+    function randomizarGrupo(grupo) {
+        ativosConfig[grupo].forEach(ativo => {
+            let randVal = (Math.random() * 5 - 2.5).toFixed(1);
+            document.getElementById(`val-${ativo}`).value = randVal;
+        });
+        calcularTudo();
+    }
+
+    function limparTudo() {
+        let todosAtivos = [...ativosConfig.macro, ...ativosConfig.adrs];
+        todosAtivos.forEach(ativo => {
+            document.getElementById(`val-${ativo}`).value = "0.0";
+        });
+        calcularTudo();
+    }
+
+    // Inicialização automática puxando a API assim que a página abre
+    window.onload = buscarCotacoesApi;
+</script>
+
+</body>
+</html>
         }
 
         // Após tentar puxar de todas as APIs, roda a esteira matemática para atualizar o velocímetro
