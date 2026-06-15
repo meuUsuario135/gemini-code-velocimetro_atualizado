@@ -1,6 +1,129 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+import os
+import subprocess
+import time
+
+# --- CONFIGURAÇÃO ---
+# Se o seu comando 'git' exigir o caminho completo ou se quiser garantir 
+# que o script roda na pasta correta, definimos o diretório do projeto:
+DIRETORIO_PROJETO = os.path.dirname(os.path.abspath(__file__))
+os.chdir(DIRETORIO_PROJETO)
+
+
+def obter_dados_mercado():
+    """
+    Esta função deve conter a lógica para puxar os seus dados dinâmicos.
+    Pode ser alterada para ler uma API, um arquivo Excel ou fazer Scraping.
+    """
+    try:
+        # Exemplo simulado: Vamos supor que obteve estes valores de uma fonte de dados
+        valor_velocimetro = 82  # O valor numérico que move o velocímetro
+        status_mercado = "Alta Intensidade"
+        subtitulo = "Indicador atualizado em tempo real via Python"
+        
+        return valor_velocimetro, status_mercado, subtitulo
+    except Exception as e:
+        print(f"Erro ao obter dados: {e}")
+        return None, None, None
+
+
+def gerar_html_atualizado(valor, status, subtitulo):
+    """
+    Esta função reescreve o index.html substituindo os valores antigos pelos novos.
+    Substitua a estrutura abaixo pelo código HTML real do seu velocímetro,
+    utilizando as f-strings {valor} onde o dado precisa entrar.
+    """
+    conteudo_html = f"""<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Velocímetro - Índices e Moedas</title>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            background-color: #121214;
+            color: #ffffff;
+            text-align: center;
+            padding: 50px;
+        }}
+        .container {{
+            background-color: #202024;
+            border: 1px solid #323238;
+            padding: 30px;
+            border-radius: 8px;
+            display: inline-block;
+        }}
+        .valor {{
+            font-size: 48px;
+            font-weight: bold;
+            color: #00b37e;
+            margin: 20px 0;
+        }}
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Velocímetro de Mercado</h1>
+        <p>{subtitulo}</p>
+        
+        <div class="valor">{valor}%</div>
+        
+        <h3>Status: {status}</h3>
+    </div>
+
+</body>
+</html>
+"""
+    
+    # Grava o novo conteúdo no ficheiro index.html
+    with open("index.html", "w", encoding="utf-8") as ficheiro:
+        ficheiro.write(conteudo_html)
+    print("Ficheiro index.html atualizado localmente com sucesso.")
+
+
+def enviar_para_github():
+    """
+    Executa os comandos do Git sequencialmente para atualizar o GitHub Pages.
+    """
+    try:
+        print("A iniciar a sincronização com o GitHub...")
+        
+        # 1. Adiciona o ficheiro modificado ao ID do Git
+        subprocess.run(["git", "add", "index.html"], check=True)
+        
+        # 2. Cria o commit com uma mensagem contendo o registo de data/hora atual
+        mensagem_commit = f"Atualização automática: {time.strftime('%d/%m/%Y %H:%M:%S')}"
+        subprocess.run(["git", "commit", "-m", mensaje_commit], check=True)
+        
+        # 3. Envia os dados para o repositório remoto no GitHub
+        # Se a sua branch principal for 'master', altere 'main' para 'master'
+        subprocess.run(["git", "push", "origin", "main"], check=True)
+        
+        print("Sucesso! O site foi atualizado e enviado para o GitHub Pages.")
+        
+    except subprocess.CalledProcessError as e:
+        print(f"Erro ao executar comando do Git: {e}")
+    except Exception as e:
+        print(f"Ocorreu um erro inesperado: {e}")
+
+
+# --- EXECUÇÃO PRINCIPAL ---
+if __name__ == "__main__":
+    # 1. Busca os novos dados
+    valor, status, subtitulo = obter_dados_mercado()
+    
+    if valor is not None:
+        # 2. Gera o novo ficheiro HTML
+        gerar_html_atualizado(valor, status, subtitulo)
+        
+        # 3. Publica no GitHub
+        enviar_para_github()
+    else:
+        print("Não foi possível atualizar o site devido a falhas na recolha de dados.")
   git init
 git add .
 git commit -m "Primeiro commit"
