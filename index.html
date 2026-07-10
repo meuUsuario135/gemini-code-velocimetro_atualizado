@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Velocímetro Pré-Market</title>
     <style>
-        /* ===== Tema Global Neon/Dark ===== */
         :root {
             --bg-main: #060b13;
             --bg-card: #0b111e;
@@ -340,7 +339,11 @@
 
     <div class="dash-header">💻 Velocímetro Pré-Market</div>
     <div class="dash-subheader">
-        Atualização automática: <span id="status-atualizacao" class="c-blue">iniciando...</span>
+        Macro (VIX/FEF2!/CL1!): <span id="status-macro" class="c-blue">iniciando...</span>
+        &nbsp;|&nbsp;
+        ADRs/DXY: <span id="status-adrs" class="c-blue">iniciando...</span>
+        &nbsp;|&nbsp;
+        próxima atualização em <span id="countdown">--</span>s
     </div>
 
     <div class="top-grid-columns">
@@ -616,60 +619,114 @@
 </div>
 
 <script>
-    // ===== Configuração =====
     const ativosConfig = {
         macro: ['vix', 'fef', 'cl1', 'dxy'],
         adrs: ['vale', 'pbr', 'itub', 'bbdc', 'bbas', 'b3sa']
     };
 
-    // Intervalo de atualização automática (ms). 60000 = 1 minuto.
-    const INTERVALO_ATUALIZACAO = 60000;
+    const INTERVALO_ATUALIZACAO = 20000;
 
-    // ===== Busca de cotações via API (com atualização automática de status) =====
-    async function buscarCotacoesApi() {
-        const status = document.getElementById('status-atualizacao');
-        status.innerText = 'buscando...';
-        status.className = 'c-blue';
+    const MAPA_ADRS_BRAPI = {
+        VALE3: 'vale',
+        PETR4: 'pbr',
+        ITUB4: 'itub',
+        BBDC4: 'bbdc',
+        BBAS3: 'bbas',
+        B3SA3: 'b3sa'
+    };
 
-        let sucessoDolar = false;
-        let sucessoVale = false;
+    const MAPA_MACRO_YAHOO = {
+        '%5EVIX': 'vix',
+        'CL=F': 'cl1',
+        'TIO=F': 'fef'
+    };
 
-        // 1. DÓLAR (AwesomeAPI) -> alimenta o campo DXY
+    function setStatus(elId, texto, classe) {
+        const el = document.getElementById(elId);
+        el.innerText = texto;
+        el.className = classe;
+    }
+
+    async function buscarAdrsEDxy() {
+        setStatus('status-adrs', 'buscando...', 'c-blue');
+        let sucessos = 0;
+
         try {
             const respostaDolar = await fetch('https://economia.awesomeapi.com.br/last/USD-BRL');
             const dadosDolar = await respostaDolar.json();
             if (dadosDolar && dadosDolar.USDBRL) {
-                const varDolar = parseFloat(dadosDolar.USDBRL.pctChange);
-                document.getElementById('val-dxy').value = varDolar.toFixed(1);
-                sucessoDolar = true;
+                document.getElementById('val-dxy').value = parseFloat(dadosDolar.USDBRL.pctChange).toFixed(1);
+                sucessos++;
             }
-        } catch (erroDolar) {
-            console.error('Erro ao sincronizar dados do Dólar:', erroDolar);
+        } catch (erro) {
+            console.error('Erro ao buscar USD/BRL:', erro);
         }
 
-        // 2. VALE3 (brapi.dev) -> alimenta o campo VALE
         try {
-            const respostaVale = await fetch('https://brapi.dev/api/quote/VALE3');
-            const dadosVale = await respostaVale.json();
-            if (dadosVale && dadosVale.results && dadosVale.results[0]) {
-                const varVale = parseFloat(dadosVale.results[0].changePercent);
-                document.getElementById('val-vale').value = varVale.toFixed(1);
-                sucessoVale = true;
+            const tickers = Object.keys(MAPA_ADRS_BRAPI).join(',');
+            const resposta = await fetch(`https://brapi.dev/api/quote/${tickers}`);
+            const dados = await resposta.json();
+            if (dados && Array.isArray(dados.results)) {
+                dados.results.forEach(ativo => {
+                    const inputId = MAPA_ADRS_BRAPI[ativo.symbol];
+                    if (inputId && ativo.changePercent !== undefined) {
+                        document.getElementById(`val-${inputId}`).value = parseFloat(ativo.changePercent).toFixed(1);
+                        sucessos++;
+                    }
+                });
             }
-        } catch (erroVale) {
-            console.error('Erro ao sincronizar dados da VALE:', erroVale);
+        } catch (erro) {
+            console.error('Erro ao buscar lote de ADRs na brapi.dev:', erro);
         }
-
-        calcularTudo();
 
         const agora = new Date().toLocaleTimeString('pt-BR');
-        if (sucessoDolar || sucessoVale) {
-            status.innerText = `última sincronia às ${agora}`;
-            status.className = 'c-green';
+        if (sucessos > 0) {
+            setStatus('status-adrs', `ok às ${agora} (${sucessos}/7)`, 'c-green');
         } else {
-            status.innerText = `falha na API às ${agora} (usando valores manuais)`;
-            status.className = 'c-pink';
+            setStatus('status-adrs', `falha às ${agora} (valores manuais)`, 'c-pink');
         }
+    }
+
+    async function buscarMacroYahoo() {
+        setStatus('status-macro', 'buscando...', 'c-blue');
+        let sucessos = 0;
+
+        for (const [simbolo, inputId] of Object.entries(MAPA_MACRO_YAHOO)) {
+            try {
+                const urlYahoo = `https://query1.finance.yahoo.com/v8/finance/chart/${simbolo}`;
+                const resposta = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(urlYahoo)}`);
+                const dados = await resposta.json();
+                const meta = dados && dados.chart && dados.chart.result && dados.chart.result[0]
+                    ? dados.chart.result[0].meta
+                    : null;
+                if (meta && meta.regularMarketPrice && meta.previousClose) {
+                    const variacao = ((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 100;
+                    document.getElementById(`val-${inputId}`).value = variacao.toFixed(1);
+                    sucessos++;
+                }
+            } catch (erro) {
+                console.error(`Erro ao buscar ${simbolo} via Yahoo Finance:`, erro);
+            }
+        }
+
+        const agora = new Date().toLocaleTimeString('pt-BR');
+        if (sucessos > 0) {
+            setStatus('status-macro', `ok às ${agora} (${sucessos}/3)`, 'c-green');
+        } else {
+            setStatus('status-macro', `falha às ${agora} (valores manuais)`, 'c-pink');
+        }
+    }
+
+    async function buscarCotacoesApi() {
+        await Promise.all([buscarAdrsEDxy(), buscarMacroYahoo()]);
+        calcularTudo();
+    }
+
+    let segundosRestantes = INTERVALO_ATUALIZACAO / 1000;
+    function atualizarCountdown() {
+        segundosRestantes--;
+        if (segundosRestantes <= 0) segundosRestantes = INTERVALO_ATUALIZACAO / 1000;
+        document.getElementById('countdown').innerText = segundosRestantes;
     }
 
     function alterar(id, delta) {
@@ -694,7 +751,6 @@
         return ids.map((id) => {
             const val = valores[id];
 
-            // VIX e DXY têm correlação inversa: invertidos na exibição matemática
             if (id === 'vix' || id === 'dxy') {
                 const valInvertido = -val;
                 const sinal = valInvertido >= 0 ? '+' : '';
@@ -718,7 +774,6 @@
             colorirTicker(`val-${ativo}`, val);
         });
 
-        // VIX e DXY invertidos (correlação inversa clássica com o mercado)
         const somaMacro = (-vals.vix) + vals.fef + vals.cl1 + (-vals.dxy);
         const somaADRs = vals.vale + vals.pbr + vals.itub + vals.bbdc + vals.bbas + vals.b3sa;
 
@@ -740,7 +795,7 @@
         else if (somaGlobal < 0) display.className = 'total-percentage c-pink';
         else display.className = 'total-percentage c-white';
 
-        let angulo = somaGlobal * 12; // sensibilidade de rotação
+        let angulo = somaGlobal * 12;
         if (angulo > 85) angulo = 85;
         if (angulo < -85) angulo = -85;
         document.getElementById('needle').style.transform = `rotate(${angulo}deg)`;
@@ -796,10 +851,10 @@
         calcularTudo();
     }
 
-    // ===== Inicialização automática =====
     window.onload = function () {
         buscarCotacoesApi();
         setInterval(buscarCotacoesApi, INTERVALO_ATUALIZACAO);
+        setInterval(atualizarCountdown, 1000);
     };
 </script>
 
